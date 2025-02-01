@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/IdeaProjects/CS61B" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/IdeaProjects/CS61B/library-sp21" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/lab4" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library-sp21" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/proj0" vcs="Git" />
+  </component>
+</project>
