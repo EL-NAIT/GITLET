@@ -375,13 +375,14 @@ public class Repository {
         String HEAD_commitID = readContentsAsString(HEAD);
         Commit HEAD_Commit = readObject(join(Commits, HEAD_commitID), Commit.class);
 
+        // Check for deleted files present in Commit but missing in Staging Area and CWD
         for (String deleted_file_in_commit : HEAD_Commit.files.keySet()){
             Boolean StagingArea_containsfile = SA.Add.containsKey(deleted_file_in_commit) || SA.Remove.contains(deleted_file_in_commit);
             if (!files_in_CWD.contains(deleted_file_in_commit) && !StagingArea_containsfile){
                 files_modified.add(deleted_file_in_commit + " (deleted)");
             }
         }
-
+        // Check for deleted files present in Staging Area but missing in Commit and CWD
         for (String deleted_file_in_SA : SA.Add.keySet()) {
             if (!files_in_CWD.contains(deleted_file_in_SA)) {
                 if (!files_modified.contains(deleted_file_in_SA)) {
@@ -390,6 +391,7 @@ public class Repository {
             }
         }
 
+        // Check for modified files
         for (String modified_file : files_in_CWD){
             if (SA.Add.containsKey(modified_file)){
                 String file_content_hash = sha1(readContents(join(CWD,modified_file)));
@@ -413,9 +415,11 @@ public class Repository {
                 }
             }
         }
+
         if (files_modified.isEmpty()){
             System.out.println("");
         }
+        // Print out modified files that are either deleted or changed
         else {
             files_modified.sort(Comparator.naturalOrder());
             for (String modificated_file : files_modified) {
@@ -423,58 +427,11 @@ public class Repository {
             }
             System.out.println("");
         }
-
-/**
-        for (String modified_file_in_commit : HEAD_Commit.files.keySet()){
-
-            Boolean StagingArea_containsfile = SA.Add.containsKey(modified_file_in_commit) || SA.Remove.contains(modified_file_in_commit);
-            if (!files_in_CWD.contains(modified_file_in_commit) && !StagingArea_containsfile){
-                files_deleted.add(modified_file_in_commit + " (deleted)"); //deleted
-            }
-            else {
-                String BlobID = HEAD_Commit.files.get(modified_file_in_commit);
-                Blob blob = readObject(join(Blobs, BlobID), Blob.class);
-                String blob_content_hash = blob.content_compare;
-                String hashed_content_CWD = sha1(readContents(join(CWD, modified_file_in_commit)));
-                if (files_in_CWD.contains(modified_file_in_commit) && !blob_content_hash.equals(hashed_content_CWD) && !StagingArea_containsfile) {
-                    files_modified.add(modified_file_in_commit + " (modified)"); //modified
-                }
-            }
-        }
-        for (String modified_file_in_SA : SA.Add.keySet()){
-            if (!files_in_CWD.contains(modified_file_in_SA)){
-                files_deleted.add(modified_file_in_SA + " (deleted)");
-            }
-            else {
-                String SA_Blob_contents = SA.Add.get(modified_file_in_SA).content_compare;
-                String CWD_File_contents = sha1(readContents(join(CWD, modified_file_in_SA)));
-                if (files_in_CWD.contains(modified_file_in_SA) && !SA_Blob_contents.equals(CWD_File_contents)) // note that Strings are not primitives when working with Java, hence == compares the reference address instead of value. Strings are immutable nonetheless.
-                {
-                    String blob_ID_SA = HEAD_Commit.files.get(modified_file_in_SA);
-                    Blob blob_SA = readObject(join(Blobs, blob_ID_SA), Blob.class);
-                    if (!HEAD_Commit.files.containsKey(modified_file_in_SA) || !blob_SA.content_compare.equals(sha1(readContents(join(CWD, modified_file_in_SA))))) {
-                        files_modified.add(modified_file_in_SA + " (modified)");  //what if you modify and then it became the same as in original commit?
-                    }
-                }
-            }
-        }
-        if (files_modified.isEmpty() && files_deleted.isEmpty()){
-            System.out.println("");
-        }
-        else {
-
-            files_modified.addAll(files_deleted);
-            files_modified.sort(Comparator.naturalOrder());
-            for (String modificated_file : files_modified) {
-                System.out.println(modificated_file);
-            }
-            System.out.println("");
-        }
- */
 
         System.out.println("=== Untracked Files ===");
         ArrayList<String> untracked = new ArrayList<>();
         for (String CWD_files : plainFilenamesIn(CWD)){
+            // A file missing in both Staging Area (Add) and last commit is untracked. Added to list tracking untrackd files.
             if (!HEAD_Commit.files.containsKey(CWD_files) && !SA.Add.containsKey(CWD_files)){
                 untracked.add(CWD_files);
             }
@@ -491,37 +448,58 @@ public class Repository {
         }
     }
 
-    public static void checkout1(String filename) { //java gitlet.Main checkout -- [file name]
+    /** Takes the version of the files as it exists in the head commit
+     *  and puts it in the working directory, overwriting the version of the file
+     *  that is already there (if any). The new version of file is not staged.
+     *  Checkout1 is called by java gitlet.Main checkout -- [file name]. */
+    public static void checkout1(String filename) {
+        //Retrieve last commit
         String HEAD_COMMITID = readContentsAsString(HEAD);
         Commit HEAD_COMMIT = readObject(join(Commits, HEAD_COMMITID), Commit.class);
+
         if (!HEAD_COMMIT.files.containsKey(filename)){
             System.out.println("File does not exist in that commit.");
         }
         else{
+            //Get blobID (blob file name) to retrieve blob object
             String blobID = HEAD_COMMIT.files.get(filename);
             Blob blob = readObject(join(Blobs, blobID), Blob.class);
+            //Write contents to file, creating or overwriting the file as needed
             writeContents(join(CWD, filename), blob.contents);
         }
     }
 
+    /** Takes the version of the file as it exists in the commit with the given ID,
+     *  and puts it in the working direcotry, overwriting the version of the file that is already there if any.
+     *  The new version of the file is not staged.
+     *  Checkout2 is called by java gitlet.Main checkout [commit ID] -- [file name]. */
     public static void checkout2(String commitID, String filename){
         List<String> list_of_commits = plainFilenamesIn(Commits);
         if (!list_of_commits.contains(commitID)){
             System.out.println("No commit with that id exists.");
         }
         else {
+            // Retrieve target commit
             Commit target_commit = readObject(join(Commits, commitID), Commit.class);
             if (!target_commit.files.containsKey(filename)){
                 System.out.println("File does not exist in that commit.");
             }
             else {
+                // Retrieve blob of file in target commit
                 String blobID = target_commit.files.get(filename);
                 Blob blob = readObject(join(Blobs, blobID), Blob.class);
+                // Write blob content into file in CWD
                 writeContents(join(CWD, filename), blob.contents);
             }
         }
     }
 
+    /** Takes all files in the commit at the head of the given branch, and puts them in working directory,
+     *  overwriting the versions of the files already there if any.
+     *  The given branch will now be considered the current branch (HEAD).
+     *  Any files tracked in the current branch but are not present in the checked out branch are deleted.
+     *  The staging area is cleared unless checked out branch is the current branch.
+     *  This method is called by java gitlet.Main checkout [branch name]. */
     public static void checkout3(String branchname){
         Branch_Control branchcontrol = readObject(Branch_Control_file, Branch_Control.class);
         if (!branchcontrol.branchname_storage.contains(branchname)){
@@ -535,23 +513,40 @@ public class Repository {
                 System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
                 return;
             }
+
             String branch_headID = readContentsAsString(join(GITLET_DIR, branchname));
+
+            // All files in CWD changed to that of branch commit, staging area is cleared.
             helpercheckout3(branch_headID);
+
+            // Branch control updates active branch to given branch
             branchcontrol.active_branch = branchname;
-            writeContents(HEAD, branch_headID);
             writeObject(Branch_Control_file, branchcontrol);
 
+            // HEAD is updated to given branch's headID
+            writeContents(HEAD, branch_headID);
         }
     }
 
+
+    /** This method takes care of changing all tracked files in CWD to those in branch commit,
+     *  and then clears the Staging Area. */
     private static void helpercheckout3(String branch_headID){
+
+        //Retrieves branch commit and HEAD commit
         Commit branch_head = readObject(join(Commits, branch_headID), Commit.class);
         Commit HEAD_commit = readObject(join(Commits, readContentsAsString(HEAD)), Commit.class);
+
+        //Retrieves Staging Area
         StagingArea SA = readObject(StagingArea_file, StagingArea.class);
+
+        //Delete all files in CWD present in commit
         for (String file : HEAD_commit.files.keySet()){
             File file_to_delete = join(CWD, file);
             restrictedDelete(file_to_delete);
         }
+
+        //Delete all files in CWD present in Staging Area
         for (String file : SA.Add.keySet()){
             File file_to_deletefromADDSA = join(CWD, file);
             restrictedDelete(file_to_deletefromADDSA);
@@ -560,25 +555,33 @@ public class Repository {
             File file_to_deletefromRemoveSA = join(CWD, file);
             restrictedDelete(file_to_deletefromRemoveSA);
         }
+
+        //Add all files from branch commit to CWD
         for (Map.Entry<String, String> filename_fileID : branch_head.files.entrySet()){
+
+            //Retrieve file blob
             File file_from_commit = join(Blobs, filename_fileID.getValue());
             Blob blob_from_commit = readObject(file_from_commit, Blob.class);
+
+            //Create file from branch commit in CWD and write Contents
             File file_working_directory = join(CWD, filename_fileID.getKey());
-            try {
-                file_working_directory.createNewFile();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
             writeContents(file_working_directory, blob_from_commit.contents);
+
         }
         SA.clean();
         writeObject(StagingArea_file, SA);
     }
 
+    /** Returns true if there is untracked file in CWD, false otherwise. */
     private static boolean if_untracked(){
+
+        //Retrieves Staging Area and last commit
         StagingArea stagingArea = readObject(StagingArea_file, StagingArea.class);
         String HEADcommitID = readContentsAsString(HEAD);
         Commit HEADcommit = readObject(join(Commits, HEADcommitID), Commit.class);
+
+        // Iterate over all files in CWD
+        // If file does not exist in both last commit and Staging Area, method returns true.
         for (String filenames_in_CWD : plainFilenamesIn(CWD)){
             boolean file_not_in_commit = !HEADcommit.files.containsKey(filenames_in_CWD);
             boolean file_not_in_SA = !stagingArea.Add.containsKey(filenames_in_CWD) && !stagingArea.Remove.contains(filenames_in_CWD);
@@ -590,26 +593,32 @@ public class Repository {
         return false;
     }
 
+    /** Creates a new branch and points it at the current head commit.
+     *  This command does not immediately switch to the newly created branch. */
     public static void branch(String branch_name){
 
+        // Create new branch file
         File new_branch = join(GITLET_DIR, branch_name);
+        // Retrieve Branch Control object
         Branch_Control branchcontrol = readObject(Branch_Control_file, Branch_Control.class);
         if (branchcontrol.branchname_storage.contains(branch_name)){
             System.out.println("A branch with that name already exists.");
             return;
         }
-        try {
-            new_branch.createNewFile();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        // Get HEAD commit ID
         String current_head_commitID = readContentsAsString(HEAD);
+        // Write to new branch file
         writeContents(new_branch, current_head_commitID);
+        // Add branch to Branch Control
         branchcontrol.add_branch(branch_name);
         writeObject(Branch_Control_file, branchcontrol);
     }
 
+    /** Deletes branch with the given name.
+     *  This command deletes the pointer associated with the branch.
+     *  This command DOES NOT delete all commits created under the branch. */
     public static void rm_branch(String branchname){
+        // Retrieve Branch Control
         Branch_Control branchcontrol = readObject(Branch_Control_file, Branch_Control.class);
         if (!branchcontrol.branchname_storage.contains(branchname)){
             System.out.println("A branch with that name does not exist.");
@@ -618,14 +627,23 @@ public class Repository {
             System.out.println("Cannot remove the current branch.");
         }
         else{
+            // Delete branch from branch control
             branchcontrol.remove_branch(branchname);
+
+            // Deletes branch file in gitlet
             File deleted_branch_pointer = join(GITLET_DIR, branchname);
             deleted_branch_pointer.delete();
+
             writeObject(Branch_Control_file, branchcontrol);
         }
     }
 
+    /** Checks out all files tracked by the given commit.
+     *  Removes tracked files that are not present in that commit.
+     *  Moves HEAD and branch pointer of given commit to that commit node and clears the staging area.
+     *  Similar to git reset --hard [commit hash]. */
     public static void reset(String commitID){
+
         File commitfile = join(Commits, commitID);
         Branch_Control branchctrl = readObject(Branch_Control_file, Branch_Control.class);
         if (!commitfile.exists()){
@@ -635,128 +653,186 @@ public class Repository {
             System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
         }
         else {
+            // Retrieve Commit and its branch
             Commit commit_to_reset_to = readObject(commitfile, Commit.class);
             String branchname = commit_to_reset_to.branchname;
+
+            // Checks out all files to commit and clears staging area
             helpercheckout3(commitID);
+
+            // Update active branch to given branch
             branchctrl.active_branch = branchname;
+            writeObject(Branch_Control_file, branchctrl);
+
+            // Update HEAD and branch pointers to given Commit
             writeContents(join(GITLET_DIR, branchname), commitID);
             writeContents(HEAD, commitID);
-            writeObject(Branch_Control_file, branchctrl);
+
         }
     }
 
+    /** Merges files from the given branch into the current branch.
+     *
+     *  The split point of the current branch and the given branch is the latest common ancestor
+     *  of the current and given branch heads; a common ancestor commit to which there is a path from
+     *  both branch heads.
+     *
+     *  Merge behaviour:
+     *      1. Files modified in given branch since split point, but not in current branch is changed to version in the given branch then staged.
+     *      2. Files modified in current branch but not in given branch since split point remains the same.
+     *      3. Files modified in both current and given branch in the same way are left unchanged by merge.
+     *
+     *      4. Files not present at split point and are present only in current branch remains the same.
+     *      5. Files not present at split point and are present only in given branch are checked out and staged.
+     *      6. Files not present in given branch but present in split point and unmodified in current branch are removed and untracked.
+     *      7. Files not present in current branch but present in split point and unmodified in given branch remains absent.
+     *
+     *      8. Files modified in different ways in the current and given branches are in conflict, which means:
+     *          a. Contents of both are changed from split point and different from the other, or
+     *          b. Contents of one are changed and the other is deleted from the split point, or
+     *          c. File was absent at split point and has different contents in the given and current branches.
+     *
+     *      Contents of conflict file is replaced with:
+     *
+     *      "<<<<<<<HEAD
+     *       contents of file in current branch
+     *       =======
+     *       contents of file in given branch
+     *       >>>>>>>"
+     *
+     *
+     *  After files have been updated accordingly, and split point is not
+     *  the current branch or given branch, merge automatically commits with the log message --
+     *  "Merged [given branch name] into [current branch name]."
+     *  If merge conflict is encountered, "Encountered a merge conflict." will be printed on the terminal. */
     public static void merge(String branchname){
-       //use level order search but for each time, check if a certain node == the other;
-        // if yes, return the node
-        // if no, continue iterating
 
         Boolean is_merge_conflict = false;
+
         StagingArea SA = readObject(StagingArea_file, StagingArea.class);
-       Branch_Control BranchControl = readObject(Branch_Control_file, Branch_Control.class);
-       if (!SA.isEmpty()){
+        Branch_Control BranchControl = readObject(Branch_Control_file, Branch_Control.class);
+
+        if (!SA.isEmpty()){
            System.out.println("You have uncommitted changes.");
            return;
-       }
-       if (!BranchControl.branchname_storage.contains(branchname)){
+        }
+
+        if (!BranchControl.branchname_storage.contains(branchname)){
            System.out.println("A branch with that name does not exist.");
            return;
-       }
-       if (branchname.equals(BranchControl.active_branch)){
+        }
+
+        if (branchname.equals(BranchControl.active_branch)){
            System.out.println("Cannot merge a branch with itself.");
            return;
-       }
-       if (if_untracked()){
+        }
+
+        if (if_untracked()){
            System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
            return;
-       }
-       String split_point_ID = find_split_point(branchname);
-       String HEAD_ID = readContentsAsString(HEAD);
-       String Branch_Head_ID = readContentsAsString(join(GITLET_DIR, branchname));
-       if (split_point_ID.equals(Branch_Head_ID)){
+        }
+
+        // Gets Commit ID of split point
+        String split_point_ID = find_split_point(branchname);
+
+
+        String HEAD_ID = readContentsAsString(HEAD);
+        String Branch_Head_ID = readContentsAsString(join(GITLET_DIR, branchname));
+
+        if (split_point_ID.equals(Branch_Head_ID)){
            System.out.println("Given branch is an ancestor of the current branch.");
            return;
-       }
+        }
        if (split_point_ID.equals(HEAD_ID)){
            checkout3(branchname);
            System.out.println("Current branch fast-forwarded.");
            return;
        }
+
+       // Retrieve HEAD, Branch, Split Point Commits
        Commit Current_HEAD = readObject(join(Commits, HEAD_ID), Commit.class);
        Commit Branch_HEAD = readObject(join(Commits, Branch_Head_ID), Commit.class);
        Commit Split_Point = readObject(join(Commits, split_point_ID), Commit.class);
 
 
-      /* Created clones of Commit.file to prevent modifying the actual commit.files. These clones are used to keep track of the blobs in the Commit.files **/
+      // Created clones of Commit.file to prevent modifying the actual commit.files.
+      // These clones are used to keep track of the blobs in the Commit.files to update each file according to merge behaviour
        Map<String, String> Current_HEAD_Blobs = (Map<String, String>) Current_HEAD.files.clone();
-       ArrayList<String> Current_HEAD_Blobs_toremove = new ArrayList<>(); //ADD elements to be removed here to remove at end of iteration in for-each loop, prevents ConcurrentModificationException.
+       //Consolidate elements to be removed here and remove at end of for-each loop, prevents ConcurrentModificationException.
+       ArrayList<String> Current_HEAD_Blobs_toremove = new ArrayList<>();
 
        Map<String, String> Branch_HEAD_Blobs = (Map<String, String>) Branch_HEAD.files.clone();
        ArrayList<String> Branch_HEAD_Blobs_toremove = new ArrayList<>();
 
        Map<String, String> Split_Point_Blobs = (Map<String, String>) Split_Point.files.clone();
-       ArrayList<String> Split_Point_Blobs_toremove = new ArrayList<>();
 
        for (Map.Entry<String, String> split_point_files : Split_Point_Blobs.entrySet()){
            String split_point_files_key = split_point_files.getKey();
            String split_point_files_valueID = split_point_files.getValue();
 
-           if (Branch_HEAD_Blobs.containsKey(split_point_files_key) && Current_HEAD_Blobs.containsKey(split_point_files_key)) //check if both branch and current have file in split point
-               {
+           // Settle files that are present in both Current and Branches from split point
+           if (Branch_HEAD_Blobs.containsKey(split_point_files_key) && Current_HEAD_Blobs.containsKey(split_point_files_key)){
+
+               // Behaviour 1: Modified in given but not in current from split point
                if (!Branch_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && Current_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID)){
                    checkout2(Branch_Head_ID, split_point_files_key);
                    add(split_point_files_key);
-                   //Branch_HEAD_Blobs.remove(split_point_files_key);
                    Branch_HEAD_Blobs_toremove.add(split_point_files_key);
-                   //Current_HEAD_Blobs.remove(split_point_files_key);
                    Current_HEAD_Blobs_toremove.add(split_point_files_key);
                }
 
+               // Behaviour 2: Modified in current but not in given from split point
                if (!Current_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && Branch_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID)){
                    Branch_HEAD_Blobs_toremove.add(split_point_files_key);
                    Current_HEAD_Blobs_toremove.add(split_point_files_key);
                }
 
+               // Behaviour 3: Modified in both from split point in the same way; no code for this since file in current will remain the same
+
+               // Behaviour 8a: Modified in both from split point but in different ways
                if (!Branch_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && !Current_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && !Branch_HEAD_Blobs.get(split_point_files_key).equals(Current_HEAD_Blobs.get(split_point_files_key))){
+
+                   // Get contents of file from branch commit
                    File Branch_blob_file = join(Blobs, Branch_HEAD_Blobs.get(split_point_files_key));
                    Blob Branch_blob = readObject(Branch_blob_file, Blob.class);
                    String Branch_blob_content = new String(Branch_blob.contents, StandardCharsets.UTF_8);
 
+                   // Get contents of file from current commit
                    File Current_blob_file = join(Blobs, Current_HEAD_Blobs.get(split_point_files_key));
                    Blob Current_blob = readObject(Current_blob_file, Blob.class);
                    String Current_blob_content = new String(Current_blob.contents, StandardCharsets.UTF_8);
 
+                   // Construct merge conflict String, write to file, and stage file
                    merge_conflict(split_point_files_key, Current_blob_content, Branch_blob_content);
-                   //Branch_HEAD_Blobs.remove(split_point_files_key);
                    Branch_HEAD_Blobs_toremove.add(split_point_files_key);
-                   //Current_HEAD_Blobs.remove(split_point_files_key);
                    Current_HEAD_Blobs_toremove.add(split_point_files_key);
                    System.out.println("Encountered a merge conflict.");
                }
            }
 
+           // Behaviour 8b: Branch file changed from split point and split point file in current deleted
            if (Branch_HEAD_Blobs.containsKey(split_point_files_key) && !Branch_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && !Current_HEAD_Blobs.containsKey(split_point_files_key)){
                Blob branchblob = readObject(join(Blobs, Branch_HEAD_Blobs.get(split_point_files_key)), Blob.class);
                String Branch_file_Content = new String(branchblob.contents, StandardCharsets.UTF_8);
                is_merge_conflict = merge_conflict(split_point_files_key ,"", Branch_file_Content);
-               //Branch_HEAD_Blobs.remove(split_point_files_key);
                Branch_HEAD_Blobs_toremove.add(split_point_files_key);
            }
-           //Files present at split point, unmodified in given branch and absent in current branch should remain absent.
 
+           // Behaviour 8b: Current file changed from split point and split point file in branch deleted
            if (Current_HEAD_Blobs.containsKey(split_point_files_key) && !Current_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && !Branch_HEAD_Blobs.containsKey(split_point_files_key)){
                Blob currentblob = readObject(join(Blobs, Current_HEAD_Blobs.get(split_point_files_key)), Blob.class);
                String Current_file_Content = new String(currentblob.contents, StandardCharsets.UTF_8);
                is_merge_conflict = merge_conflict(split_point_files_key ,Current_file_Content, "");
-               //Current_HEAD_Blobs.remove(split_point_files_key);
                Current_HEAD_Blobs_toremove.add(split_point_files_key);
            }
 
-           //code for point 7
+           // Behaviour 6: File present at split, unmodified in current, absent in given
            if (Current_HEAD_Blobs.containsKey(split_point_files_key) && Current_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && !Branch_HEAD_Blobs.containsKey(split_point_files_key)){
                rm(split_point_files_key);
                Current_HEAD_Blobs_toremove.add(split_point_files_key);
            }
 
+           // Behaviour 7: File present at split, unmodified in given, absent in current
            if (Branch_HEAD_Blobs.containsKey(split_point_files_key) && Branch_HEAD_Blobs.get(split_point_files_key).equals(split_point_files_valueID) && !Current_HEAD_Blobs.containsKey(split_point_files_key)){
                Branch_HEAD_Blobs_toremove.add(split_point_files_key);
            }
@@ -764,6 +840,7 @@ public class Repository {
        Current_HEAD_Blobs.keySet().removeAll(Current_HEAD_Blobs_toremove);
        Branch_HEAD_Blobs.keySet().removeAll(Branch_HEAD_Blobs_toremove);
 
+       // Behaviour 4: Files not present at split point and present only in current branch
        for (Map.Entry<String, String> current_files : Current_HEAD_Blobs.entrySet()){
            if (!Split_Point_Blobs.containsKey(current_files.getKey()) && !Branch_HEAD_Blobs.containsKey(current_files.getKey())){
                Current_HEAD_Blobs_toremove.add(current_files.getKey());
@@ -771,6 +848,7 @@ public class Repository {
        }
        Current_HEAD_Blobs.keySet().removeAll(Current_HEAD_Blobs_toremove);
 
+       // Behaviour 5: Files not present at split point and present only in given branch
        for (Map.Entry<String, String> branch_files : Branch_HEAD_Blobs.entrySet()){
            if (!Split_Point_Blobs.containsKey(branch_files.getKey()) && !Current_HEAD_Blobs.containsKey(branch_files.getKey())){
                checkout2(Branch_Head_ID, branch_files.getKey());
@@ -780,6 +858,7 @@ public class Repository {
        }
        Branch_HEAD_Blobs.keySet().removeAll(Branch_HEAD_Blobs_toremove);
 
+       // Behaviour 8c: File absent at split point and has different contents in given and current branches
        for (Map.Entry<String, String> Curr_file : Current_HEAD_Blobs.entrySet()){
            if (Branch_HEAD_Blobs.containsKey(Curr_file.getKey()) && !Curr_file.getValue().equals(Branch_HEAD_Blobs.get(Curr_file.getKey()))){
                Blob Curr_file_blob = readObject(join(Blobs, Curr_file.getValue()), Blob.class);
@@ -803,30 +882,31 @@ public class Repository {
     }
 
     //Does not handle commit of file
+    // Constructs the merge conflict content, write to file, and then stage the file
     private static boolean merge_conflict(String filename, String current_file_content, String branch_file_content){
         String merge_conflict_contents = "<<<<<<< HEAD\n" + current_file_content + "=======\n" + branch_file_content + ">>>>>>>\n";
         File file = join(CWD, filename);
-        if (!file.exists()){
-            try {
-                file.createNewFile();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
         writeContents(file, merge_conflict_contents);
         add(filename);
         return true;
     }
 
+    /** Returns the COMMIT_ID of split point of current branch and given branch.
+     *  Uses level order search concept. */
     private static String find_split_point(String branchname){
+
         String current_branch_HEAD = readContentsAsString(HEAD);
         String target_branch_HEAD = readContentsAsString(join(GITLET_DIR, branchname));
 
+        // Keeps track of neighbours added during iteration of commits from current branch and given branch respectively
         Queue<String> current_fringe = new LinkedList<>();
         Queue<String> branch_fringe = new LinkedList<>();
+
+        // Keeps track of nodes/ commits that have been visited
         HashSet<String> marked_current = new HashSet<>();
         HashSet<String> marked_branch = new HashSet<>();
 
+        // Initially, add starting points to both marked sets and the queue tracking iteration of nodes
         current_fringe.add(current_branch_HEAD);
         branch_fringe.add(target_branch_HEAD);
         marked_current.add(current_branch_HEAD);
@@ -837,14 +917,17 @@ public class Repository {
                 String current_commit_ID = current_fringe.remove();
                 Commit current_commit = readObject(join(Commits, current_commit_ID), Commit.class);
                 String current_neighbour = current_commit.Default_parent_commitID;
-                marked_current.add(current_neighbour);
-                current_fringe.add(current_neighbour);
+                // Condition to prevent case of initial commit with null parents reached first
+                if (current_neighbour != null) {
+                    marked_current.add(current_neighbour);
+                    current_fringe.add(current_neighbour);
+                }
                 if (current_commit.Secondary_parent_commitID != null) {
                     String second_neighbour = current_commit.Secondary_parent_commitID;
                     marked_current.add(second_neighbour);
                     current_fringe.add(second_neighbour);
                 }
-                if (marked_branch.contains(current_commit_ID) && marked_current.contains(current_commit_ID)){
+                if (marked_branch.contains(current_commit_ID)){
                     return current_commit_ID;
                 }
             }
@@ -853,22 +936,20 @@ public class Repository {
                 String branch_commit_ID = branch_fringe.remove();
                 Commit branch_commit = readObject(join(Commits, branch_commit_ID), Commit.class);
                 String branch_neighbour = branch_commit.Default_parent_commitID;
-                marked_branch.add(branch_neighbour);
-                branch_fringe.add(branch_neighbour);
+                if (branch_neighbour != null) {
+                    marked_branch.add(branch_neighbour);
+                    branch_fringe.add(branch_neighbour);
+                }
                 if (branch_commit.Secondary_parent_commitID != null) {
                     String second_neighbour_branch = branch_commit.Secondary_parent_commitID;
                     marked_branch.add(second_neighbour_branch);
                     branch_fringe.add(second_neighbour_branch);
                 }
-                if (marked_branch.contains(branch_commit_ID) && marked_current.contains(branch_commit_ID)){
+                if (marked_current.contains(branch_commit_ID)){
                     return branch_commit_ID;
                 }
             }
         }
         return null;
-        //Loop until both fringe is empty
-            // Remove vertex from both queue
-            // For each unmarked neighbour, mark them with own queue distinctive mark
-            // Add neighbours to end of queue
     }
 }

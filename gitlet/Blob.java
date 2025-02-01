@@ -9,9 +9,9 @@ import static gitlet.Utils.*;
 
 public class Blob implements Serializable {
 
-    public byte[] contents;
-    public String content_compare; //this will be the hashed value of contents in blob, and used as a name of blob.
-    public String name;
+    public final byte[] contents;
+    public final String content_compare; //this will be the hashed value of contents in blob, and used as a name of blob.
+    public final String name;
 
 
     //only handles files not directories. Need to check if only files are included and not directories by the question.

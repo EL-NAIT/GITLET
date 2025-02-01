@@ -21,16 +21,16 @@ import static gitlet.Utils.*;
 public class Commit implements Serializable {
 
     /** The message of this Commit. */
-    public String message;
+    public final String message;
 
     /** The timestamp of this Commit */
-    public Date timestamp;
+    public final Date timestamp;
 
     /** The SHA1 hash of the default parent commit of this Commit */
-    public String Default_parent_commitID;
+    public final String Default_parent_commitID;
 
     /** The SHA1 hash of the second parent commit of this Commit, only applicable for merging */
-    public String Secondary_parent_commitID;
+    public final String Secondary_parent_commitID;
 
     /** The name of branch that this Commit sits on */
     public String branchname;
