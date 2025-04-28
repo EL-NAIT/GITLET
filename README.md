@@ -29,6 +29,12 @@ This made me rethink my approach to program design as I learnt the importance of
 
 ## Installation
 
+1. Install the code from github
+2. Extract all folders and files if you installed as a zip file
+3. Delete the other files and folders except one named gitlet.
+4. Move the gitlet folder to the current working directory you want to version-control
+5. Run the commands
+
 ## How to use
 
 ## Credits
